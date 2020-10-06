@@ -33,6 +33,8 @@ from instagram_scraper import InstagramScraper
 
 import random
 import numpy as np
+import pandas as pd
+import json
 
 
 def main():
@@ -150,7 +152,7 @@ def main():
         "--media_types",
         "-t",
         nargs="+",
-        default=["image", "video", "story"],
+        default=["image"],
         help="Specify media types to scrape",
     )
     parser.add_argument(
@@ -308,66 +310,62 @@ def main():
         global MAX_RETRIES
         MAX_RETRIES = sys.maxsize
 
+    cols = ["image", "likes"]
+    meta = pd.read_csv('image_data.csv') #or pd.DataFrame(columns=cols)
+    all_tags = list(pd.read_csv('tags.csv')['cycling_tags'])
+
     while True:
-        sleep_time = int((abs(np.random.normal(90, 90, 1)))[0])
+        print("\n\n")
+
+        directory = "../img/"
+        for filename in os.listdir(directory):
+            if filename.endswith(".json"):
+                with open(
+                    os.path.join(directory, filename), encoding="utf8"
+                ) as currentfile:
+                    f_dict = json.load(currentfile)
+
+                    for image in f_dict["GraphImages"]:
+                        try:
+                            for tag in image["tags"]:
+                                if tag not in all_tags:
+                                    try:
+                                        all_tags.append(str(tag))
+                                    except:
+                                        print('Some kind of issue')
+                                else:
+                                    print('I saw this already')
+                        except:
+                            print("This image has no tags")
+
+                        image_name = image["display_url"].split(".jpg?")[0]
+                        image_name = image_name.split("e35")[-1]
+                        image_name = image_name.split("/")[-1]
+                        # print(image_name, str(image_name) == meta['image'])
+
+                        if image_name not in meta["image"]:
+                            temp = pd.DataFrame(
+                                data=[[image_name, image["edge_liked_by"]["count"]]],
+                                columns=cols,
+                            )
+                            meta = pd.concat([meta, temp], ignore_index=True)
+
+        meta = meta.drop_duplicates(subset=["image"])
+        meta.to_csv("image_data.csv", encoding="utf-8", index=False)
+        pd.DataFrame(data=all_tags, columns=["cycling_tags"]).to_csv(
+            "tags.csv", encoding="utf-8", index=False
+        )
+
+        sleep_time = int((abs(np.random.normal(90, 180, 1)))[0])
         print("sleeping {0}".format(sleep_time))
         time.sleep(sleep_time)
 
         args.maximum = random.randint(1, 12)
         print("max {0}".format(args.maximum))
 
-        args.usernames = [
-            "halo",
-            "masterchief",
-            "cortana",
-            "covenant",
-            "halomasterchief",
-            "haloconvenant",
-            "haloelite",
-            "halo.spartan",
-            "spartan",
-            "elite",
-            "haloelites",
-            "halo.spartan",
-            "halo.elite",
-            "halo.covenant",
-            "halo.masterchief",
-            "halo2",
-            "halo3",
-            "halo4",
-            "halo5",
-            "halo6",
-            "combatevolved",
-            "halo.cortana",
-            "halocortana",
-            "halocosplay",
-            "halofanart",
-            "xboxhalo",
-            "haloxbox",
-            "xboxcortana",
-            "cortanaxbox",
-            "masterchiefcosplay",
-            "masterchiefart",
-            "masterchieffanart",
-            "cortanacosplay",
-            "cortanaart",
-            "cortanafanart",
-            "spartanxbox",
-            "spartanhalo",
-            "halospartan",
-            "spartanmasterchief",
-            "covenantcosplay",
-            "covenantxbox",
-            "spartancosplay",
-            "haloillustration",
-            "haloart",
-            "halospark",
-            "haloflood",
-            "halospartans",
-            "halocomic",
-            "halomanga",
-        ]
-        print(args)
+        args.usernames = list(np.random.choice(all_tags, 1))
+        args.destination = "../img/"
+        print("Searching for", args.usernames[0])
 
         scraper = InstagramScraper(**vars(args))
 
@@ -376,19 +374,22 @@ def main():
         else:
             scraper.authenticate_as_guest()
 
-        if args.followings_input:
-            scraper.usernames = list(scraper.query_followings_gen(scraper.login_user))
-            if args.followings_output:
-                with open(scraper.destination + scraper.followings_output, "w") as file:
-                    for username in scraper.usernames:
-                        file.write(username + "\n")
-                        # If not requesting anything else, exit
-                    if args.media_types == ["none"] and args.media_metadata is False:
-                        scraper.logout()
-                        return
+        # if args.followings_input:
+        #     scraper.usernames = list(scraper.query_followings_gen(scraper.login_user))
+        #     if args.followings_output:
+        #         with open(scraper.destination + scraper.followings_output, "w") as file:
+        #             for username in scraper.usernames:
+        #                 file.write(username + "\n")
+        #                 # If not requesting anything else, exit
+        #             if args.media_types == ["none"] and args.media_metadata is False:
+        #                 scraper.logout()
+        #                 return
 
         if args.tag:
-            scraper.scrape_hashtag()
+            try:
+                scraper.scrape_hashtag()
+            except:
+                print('I dont like this hashtag')
         elif args.location:
             scraper.scrape_location()
         elif args.search_location:
